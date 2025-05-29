@@ -98,14 +98,50 @@ local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
 screenGui.Name = "MainUI"
 screenGui.ResetOnSpawn = false
 
+local UIS = game:GetService("UserInputService")
 local container = Instance.new("Frame", screenGui)
 container.Size = UDim2.fromScale(0.15, 0.75)
+container.Position = UDim2.fromScale(0.05, 0.1)
 container.BackgroundColor3 = Color3.new(0,0,0)
 container.BackgroundTransparency = 0.25
 container.Name = "Container"
+container.Active = true -- important for input
+container.Selectable = true
+
+local dragging = false
+local dragStart, startPos
+
+local function update(input)
+	if dragging then
+		local delta = input.Position - dragStart
+		container.Position = UDim2.new(
+			startPos.X.Scale, startPos.X.Offset + delta.X,
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y
+		)
+	end
+end
+
+container.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = container.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+container.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
+		update(input)
+	end
+end)
 
 container.Active = true
-container.Draggable = true
+
 local uiCorner = Instance.new("UICorner", container)
 uiCorner.CornerRadius = UDim.new(0.1, 0)
 -- Phase 1 UI
