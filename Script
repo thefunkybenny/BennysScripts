@@ -1,0 +1,583 @@
+-- Services
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
+
+-- Game State
+local placingPath, waypoints, currentWave, gameStarted, placingTowerType, selectedTower, rangeCircle = false, {}, 0, false, nil, nil, nil
+
+local gameFolder = Instance.new("Folder", workspace)
+gameFolder.Name = "TowerDefense"
+
+-- Enemy Config
+local EnemyTypes = {
+	Basic = { Speed = 10, Color = Color3.fromRGB(255, 0, 0), Size = Vector3.new(2, 2, 2), Tier = 1 },
+	Fast  = { Speed = 15, Color = Color3.fromRGB(0, 255, 0), Size = Vector3.new(1.5, 1.5, 1.5), Tier = 2 },
+	Tank  = { Speed = 7, Color = Color3.fromRGB(0, 0, 255), Size = Vector3.new(3, 3, 3), Tier = 2 },
+	Shadow = { Speed = 10, Color = Color3.fromRGB(75, 75, 75), Size = Vector3.new(5, 5, 5), Tier = 3, Stealth = true },
+	Ghost = { Speed = 15, Color = Color3.fromRGB(25, 25, 25), Size = Vector3.new(10, 10, 10), Tier = 4, Stealth = true },
+	Bolt = { Speed = 20, Color = Color3.fromRGB(255, 255, 0), Size = Vector3.new(30, 30, 30), Tier = 4},
+	Boss = { Speed = 3, Color = Color3.fromRGB(128, 0, 128), Size = Vector3.new(100, 100, 100), Tier = 5}
+}
+
+local function getAvailableTypes(waveNumber)
+	local available = {}
+	for name, info in pairs(EnemyTypes) do
+		if (waveNumber >= 40 and info.Tier == 5)
+			or (waveNumber >= 25 and info.Tier == 4)
+			or (waveNumber >= 15 and info.Tier == 3)
+			or (waveNumber >= 5 and info.Tier == 2)
+			or info.Tier == 1 then
+			table.insert(available, name)
+		end
+	end
+	return available
+end
+
+local function getEnemyCount(waveNumber)
+	if waveNumber % 10 == 0 then
+		return 1 -- Boss waves
+	elseif waveNumber < 10 then
+		return 3 + waveNumber -- Gradual increase
+	elseif waveNumber < 30 then
+		return 10 + math.floor(waveNumber / 2)
+	else
+		return 20 + math.floor(waveNumber / 3)
+	end
+end
+
+local function generateWaves(numWaves)
+	local waves = {}
+	for i = 1, numWaves do
+		local available = getAvailableTypes(i)
+		local enemyCount = getEnemyCount(i)
+		local wave = {}
+		for _ = 1, enemyCount do
+			local enemyType = available[math.random(1, #available)]
+			table.insert(wave, enemyType)
+		end
+		table.insert(waves, wave)
+	end
+	return waves
+end
+
+local Waves = generateWaves(150)
+
+local TowerTypes = {
+	Knight = {
+		Color = BrickColor.new("Bright yellow"),
+		Size = Vector3.new(2, 4, 2),
+		Range = 8,
+		Cooldown = 0.5,
+		Damage = 5,
+		Cost = 10,
+	},
+	Archer = {
+		Color = BrickColor.new("Bright blue"),
+		Size = Vector3.new(1.5, 4, 1.5),
+		Range = 20,
+		Cooldown = 1.5,
+		Damage = 5,
+		Cost = 25,
+	},
+	Crossbower = {
+		Color = BrickColor.new("Bright red"),
+		Size = Vector3.new(1, 4, 1),
+		Range = 60,
+		Cooldown = 4,
+		Damage = 10,
+		Cost = 50,
+	},
+}
+
+-- GUI Setup
+local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+screenGui.Name = "MainUI"
+screenGui.ResetOnSpawn = false
+
+local container = Instance.new("Frame", screenGui)
+container.Size = UDim2.fromScale(0.15, 0.75)
+container.BackgroundColor3 = Color3.new(0,0,0)
+container.BackgroundTransparency = 0.25
+container.Name = "Container"
+
+container.Active = true
+container.Draggable = true
+local uiCorner = Instance.new("UICorner", container)
+uiCorner.CornerRadius = UDim.new(0.1, 0)
+-- Phase 1 UI
+local phase1 = Instance.new("Frame", container)
+phase1.Name = "Phase1"
+phase1.Size = UDim2.fromScale(1, 1)
+phase1.BackgroundTransparency = 1
+
+local title = Instance.new("TextLabel", phase1)
+title.Size = UDim2.fromScale(1, 0.2)
+title.Position = UDim2.fromScale(0, 0)
+title.Text = "Benny's Tower Defense"
+title.Font = Enum.Font.SourceSansBold
+title.TextSize = 40
+title.TextWrapped = true
+title.TextColor3 = Color3.new(1, 1, 1)
+title.BackgroundTransparency = 1
+
+local info = Instance.new("TextLabel", phase1)
+info.Size = UDim2.fromScale(1, 0.35)
+info.Position = UDim2.fromScale(0, 0.2)
+info.Text = "This script can turn any game into a tower defense map! To start, click to place waypoints for the enemies to follow. v1.0"
+info.Font = Enum.Font.SourceSans
+info.TextSize = 24
+info.TextColor3 = Color3.new(1, 1, 1)
+info.BackgroundTransparency = 1
+info.TextWrapped = true
+
+local function createButton(parent, text, pos, callback)
+	local btn = Instance.new("TextButton", parent)
+	btn.Size = UDim2.fromScale(0.75, 0.1)
+	btn.Position = pos
+	btn.Text = text
+	btn.Font = Enum.Font.SourceSansBold
+	btn.TextSize = 20
+	btn.BackgroundTransparency = 1
+	btn.TextColor3 = Color3.new(1, 1, 1)
+	
+	local uiCorner = Instance.new("UICorner", btn)
+	uiCorner.CornerRadius = UDim.new(0.1, 0)
+	
+	local uiStroke = Instance.new("UIStroke", btn)
+	uiStroke.Thickness = 2
+	uiStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	uiStroke.Color = Color3.new(1,1,1)
+	
+	btn.MouseButton1Click:Connect(callback)
+	return btn
+end
+
+local function clearPath()
+	for _, wp in ipairs(waypoints) do
+		if wp and wp.Parent then wp:Destroy() end
+	end
+	waypoints = {}
+end
+
+-- Tower Placement
+
+createButton(phase1, "Start Placing Path", UDim2.fromScale(0.125, 0.6), function()
+	clearPath()
+	placingPath = true
+	print("Started placing path")
+end)
+
+createButton(phase1, "End Placing Path", UDim2.fromScale(0.125, 0.7), function()
+	placingPath = false
+	print("Stopped placing path")
+end)
+
+createButton(phase1, "Start Game", UDim2.fromScale(0.125, 0.85), function()
+	if #waypoints < 2 then
+		warn("Need at least 2 waypoints to start the game.")
+		return
+	end
+	phase1.Visible = false
+	container.Phase2.Visible = true
+	gameStarted = true
+	placingPath = false
+	print("Game started")
+end)
+
+-- Phase 2 UI
+local phase2 = Instance.new("Frame", container)
+phase2.Name = "Phase2"
+phase2.Size = UDim2.fromScale(1, 1)
+phase2.BackgroundTransparency = 1
+phase2.Visible = false
+
+local money = 20
+local moneyDisplay = Instance.new("TextLabel", phase2)
+moneyDisplay.Size = UDim2.fromScale(1, 0.1)
+moneyDisplay.Position = UDim2.fromScale(0, 0)
+moneyDisplay.Text = "Money: " .. money
+moneyDisplay.Font = Enum.Font.SourceSansBold
+moneyDisplay.TextSize = 28
+moneyDisplay.TextColor3 = Color3.new(1, 1, 1)
+moneyDisplay.BackgroundTransparency = 1
+
+local health = 100
+local healthDisplay = Instance.new("TextLabel", phase2)
+healthDisplay.Size = UDim2.fromScale(1, 0.1)
+healthDisplay.Position = UDim2.fromScale(0, 0.1)
+healthDisplay.Text = "Health: " .. health
+healthDisplay.Font = Enum.Font.SourceSansBold
+healthDisplay.TextSize = 28
+healthDisplay.TextColor3 = Color3.new(1, 1, 1)
+healthDisplay.BackgroundTransparency = 1
+
+local function updateMoneyDisplay()
+	moneyDisplay.Text = "Money: " .. money
+end
+
+local function updateHealthDisplay()
+	healthDisplay.Text = "Health: " .. math.max(0, math.floor(health))
+end
+
+local towerOrder = { "Knight", "Archer", "Crossbower" }
+for i, towerName in ipairs(towerOrder) do
+	local config = TowerTypes[towerName]
+	createButton(phase2, "Place " .. towerName .. " (" .. config.Cost .. ")", UDim2.fromScale(0.125, 0.25 + i * 0.1), function()
+		if money < config.Cost then
+			warn("Not enough money to place a " .. towerName .. ".")
+			return
+		end
+		placingTowerType = towerName
+		print("Placing " .. towerName .. " Tower...")
+	end)
+end
+
+local function hideRangeCircle()
+	if rangeCircle then
+		rangeCircle:Destroy()
+		rangeCircle = nil
+	end
+	selectedTower = nil
+end
+
+local function stopRound()
+	print("Round stopped manually.")
+
+	-- Clean up game folder
+	for _, obj in ipairs(gameFolder:GetChildren()) do
+		obj:Destroy()
+	end
+
+	clearPath()
+	phase2.Visible = false
+	phase1.Visible = true
+	money, health, currentWave = 20, 100, 0
+	updateMoneyDisplay()
+	updateHealthDisplay()
+	gameStarted = false
+	placingTowerType = nil
+	hideRangeCircle()
+end
+
+createButton(phase2, "Stop Placement", UDim2.fromScale(0.125, 0.75), function()
+	placingTowerType = nil
+	print("Stopped placing tower.")
+end)
+
+createButton(phase2, "Start Next Wave", UDim2.fromScale(0.125, 0.2), function()
+	currentWave += 1
+	if Waves[currentWave] then
+		print("Starting Wave " .. currentWave)
+		spawnWave(Waves[currentWave])
+	else
+		print("No more waves.")
+	end
+end)
+
+createButton(phase2, "Stop Round", UDim2.fromScale(0.125, 0.85), function()
+	stopRound()
+end)
+
+-- Waypoint and Enemy Functions
+local function createWaypoint(pos)
+	local part = Instance.new("Part")
+	part.Size, part.Shape = Vector3.one, Enum.PartType.Ball
+	part.Anchored, part.CanCollide = true, false
+	part.Material, part.Color = Enum.Material.Neon, Color3.fromRGB(163, 162, 165)
+	part.Position = pos + Vector3.new(0, 0.5, 0)
+	part.Name, part.Parent = "Waypoint", gameFolder
+
+	local att = Instance.new("Attachment", part)
+	att.Name = "WaypointAttachment"
+	return part
+end
+
+local function createTower(pos, towerType)
+	local config = TowerTypes[towerType]
+	if not config then return end
+
+	local tower = Instance.new("Part")
+	tower.Size = config.Size
+	tower.Position = pos + Vector3.new(0, config.Size.Y / 2, 0)
+	tower.Anchored = true
+	tower.CanCollide = true
+	tower.BrickColor = config.Color
+	tower.Name = towerType .. "Tower"
+	tower.Parent = gameFolder
+	
+	tower.Shape = Enum.PartType.Ball
+	tower.TopSurface = Enum.SurfaceType.Smooth
+	tower.BottomSurface = Enum.SurfaceType.Smooth
+
+	local decal = Instance.new("Decal")
+	decal.Texture = "rbxassetid://76360039124008"
+	decal.Face = Enum.NormalId.Front
+	decal.Parent = tower
+	
+	-- Attack loop with LOS and visual beam
+	coroutine.wrap(function()
+		local config = TowerTypes[towerType]
+		local cooldown = config.Cooldown
+		local range = config.Range
+		local damage = config.Damage
+
+		local target = nil
+
+		while tower.Parent do
+			task.wait(cooldown)
+
+			-- Find a valid target
+			for _, enemy in ipairs(gameFolder:GetChildren()) do
+				if enemy:IsA("Part") and enemy.Name == "Enemy" then
+					local distance = (enemy.Position - tower.Position).Magnitude
+					if distance <= range then
+						print("in range")
+						local isStealth = enemy:GetAttribute("Stealth")
+						if isStealth and towerType ~= "Crossbower" then
+							continue -- Skip stealth enemies unless this is a Crossbower
+						end
+						
+						target = enemy
+						break
+					end
+				end
+			end
+
+			if target and target.Parent then
+				local distance = (target.Position - tower.Position).Magnitude
+				if distance > range then
+					target = nil
+					continue
+				end
+				
+				-- Rotate tower to face target
+				local lookVector = (target.Position - tower.Position).Unit
+				local newCFrame = CFrame.new(tower.Position, tower.Position + Vector3.new(lookVector.X, 0, lookVector.Z))
+				tower.CFrame = newCFrame
+
+				-- Damage the target
+				local shrinkAmount = Vector3.new(0.1, 0.1, 0.1) * damage
+				target.Size -= shrinkAmount
+				
+				money += 1
+				updateMoneyDisplay()
+				-- Damage visual (beam-like part)
+				local beamPart = Instance.new("Part")
+				beamPart.Anchored = true
+				beamPart.CanCollide = false
+				beamPart.Material = Enum.Material.Neon
+				beamPart.Color = Color3.new(1, 0, 0)
+				beamPart.Transparency = 0.3
+				beamPart.Size = Vector3.new(0.15, 0.15, (target.Position - tower.Position).Magnitude)
+				beamPart.CFrame = CFrame.new(tower.Position, target.Position) * CFrame.new(0, 0, -beamPart.Size.Z / 2)
+				beamPart.Parent = gameFolder
+
+				game:GetService("Debris"):AddItem(beamPart, 0.2)
+
+				if target.Size.X < 0.5 or target.Size.Y < 0.5 or target.Size.Z < 0.5 then
+					target:Destroy()
+					target = nil
+				end
+			else
+				target = nil
+			end
+		end
+	end)()
+end
+
+local function showRangeCircle(tower, range)
+	hideRangeCircle()
+
+	rangeCircle = Instance.new("Part")
+	rangeCircle.Shape = Enum.PartType.Ball
+	rangeCircle.Size = Vector3.new(range, range, range)
+	rangeCircle.Anchored = true
+	rangeCircle.CanCollide = false
+	rangeCircle.Transparency = 0.6
+	rangeCircle.Material = Enum.Material.ForceField
+	rangeCircle.Color = Color3.fromRGB(255, 255, 255)
+	rangeCircle.Position = tower.Position
+	rangeCircle.Name = "RangeCircle"
+	rangeCircle.Parent = gameFolder
+
+	selectedTower = tower
+end
+
+local function connectWaypoints(p1, p2)
+	local beam = Instance.new("Beam")
+	beam.Attachment0 = p1:FindFirstChild("WaypointAttachment")
+	beam.Attachment1 = p2:FindFirstChild("WaypointAttachment")
+	beam.Color = ColorSequence.new(Color3.fromRGB(255,255,255))
+	beam.Width0, beam.Width1 = 0.25, 0.25
+	beam.FaceCamera, beam.LightInfluence = true, 0
+	beam.Parent = p2
+end
+
+local function onMouseClick()
+	if placingPath and not gameStarted then
+		local ray = workspace:Raycast(workspace.CurrentCamera:ScreenPointToRay(mouse.X, mouse.Y).Origin, mouse.UnitRay.Direction * 500, RaycastParams.new())
+		if ray then
+			local wp = createWaypoint(ray.Position)
+			if #waypoints > 0 then connectWaypoints(waypoints[#waypoints], wp) end
+			table.insert(waypoints, wp)
+		end
+	elseif placingTowerType then
+		local ray = workspace:Raycast(workspace.CurrentCamera:ScreenPointToRay(mouse.X, mouse.Y).Origin, mouse.UnitRay.Direction * 500, RaycastParams.new())
+		local towerData = TowerTypes[placingTowerType]
+		if ray and money >= towerData.Cost then
+			createTower(ray.Position, placingTowerType)
+			money -= towerData.Cost
+			updateMoneyDisplay()
+			print(placingTowerType .. " placed. Money left:", money)
+		elseif money < towerData.Cost then
+			warn("Not enough money to place tower.")
+		end
+	end
+	-- Check if clicking a tower (and not placing one)
+	if not placingPath and not placingTowerType then
+		local ray = workspace:Raycast(workspace.CurrentCamera:ScreenPointToRay(mouse.X, mouse.Y).Origin, mouse.UnitRay.Direction * 500, RaycastParams.new())
+		if ray and ray.Instance then
+			local clicked = ray.Instance
+			if clicked:IsA("Part") and TowerTypes[clicked.Name:gsub("Tower", "")] then
+				if selectedTower == clicked then
+					hideRangeCircle()
+					print("Deselected tower.")
+				else
+					local towerType = clicked.Name:gsub("Tower", "")
+					local config = TowerTypes[towerType]
+					showRangeCircle(clicked, config.Range)
+					print("Selected " .. towerType .. " tower.")
+				end
+			else
+				hideRangeCircle()
+			end
+		end
+	end
+end
+
+local function createEnemy(enemyType)
+	local e = EnemyTypes[enemyType]
+	if not e then return end
+
+	local enemy = Instance.new("Part")
+	enemy.Anchored, enemy.CanCollide = true, false
+	enemy.Size, enemy.Color = e.Size, e.Color
+	enemy.Position = waypoints[1].Position + Vector3.new(0, 2, 0)
+	enemy.Name = "Enemy"
+	enemy.Parent = gameFolder
+	enemy.Shape = Enum.PartType.Ball
+	enemy.TopSurface = Enum.SurfaceType.Smooth
+	enemy.BottomSurface = Enum.SurfaceType.Smooth
+	
+	local decal = Instance.new("Decal")
+	decal.Texture = "rbxassetid://76360039124008"
+	decal.Face = Enum.NormalId.Front
+	decal.Parent = enemy
+	
+	return enemy, e.Speed
+end
+
+local function moveEnemy(enemy, speed)
+	for i = 2, #waypoints do
+		local nextPos = waypoints[i].Position + Vector3.new(0, 2, 0)
+		local distance = (enemy.Position - nextPos).Magnitude
+		local direction = (nextPos - enemy.Position).Unit
+		enemy.CFrame = CFrame.lookAt(enemy.Position, enemy.Position + direction)
+		local tween = TweenService:Create(enemy, TweenInfo.new(distance / speed, Enum.EasingStyle.Linear), { Position = nextPos })
+		tween:Play()
+		tween.Completed:Wait()
+	end
+
+	-- Deal damage on leak
+	if enemy and enemy.Parent then
+		local leakDamage = enemy.Size.Magnitude
+		health -= leakDamage
+		updateHealthDisplay()
+		print("Enemy leaked! -" .. leakDamage .. " health. Current health:", health)
+
+		if health <= 0 then
+			print("Game over!")
+			-- Reset game
+			for _, obj in ipairs(gameFolder:GetChildren()) do
+				obj:Destroy()
+			end
+			clearPath()
+			phase2.Visible = false
+			phase1.Visible = true
+			money, health, currentWave = 20, 100, 0
+			updateMoneyDisplay()
+			updateHealthDisplay()
+			gameStarted = false
+			placingTowerType = nil
+			hideRangeCircle()
+		end
+	end
+
+	enemy:Destroy()
+end
+
+function spawnWave(wave)
+	coroutine.wrap(function()
+		for _, t in ipairs(wave) do
+			local enemy, speed = createEnemy(t)
+			if enemy then coroutine.wrap(function() moveEnemy(enemy, speed) end)() end
+			task.wait(1)
+		end
+	end)()
+end
+
+-- Click detection
+mouse.Button1Down:Connect(onMouseClick)
+
+local function storeOriginalValues(instance)
+	for _, descendant in pairs(instance:GetDescendants()) do
+		if descendant:IsA("TextLabel") or descendant:IsA("TextButton") or descendant:IsA("TextBox") then
+			if descendant:FindFirstChild("OriginalTextSize") == nil then
+				local val = Instance.new("NumberValue")
+				val.Name = "OriginalTextSize"
+				val.Value = descendant.TextSize
+				val.Parent = descendant
+			end
+		elseif descendant:IsA("UIStroke") then
+			if descendant:FindFirstChild("OriginalThickness") == nil then
+				local val = Instance.new("NumberValue")
+				val.Name = "OriginalThickness"
+				val.Value = descendant.Thickness
+				val.Parent = descendant
+			end
+		end
+	end
+end
+
+local function scaleUIElements(instance)
+	local screenSize = game:GetService("Workspace").CurrentCamera.ViewportSize
+	local scaleFactor = screenSize.Y / 800 -- Change 1366 to your baseline screen height
+
+	for _, descendant in pairs(instance:GetDescendants()) do
+		if descendant:IsA("TextLabel") or descendant:IsA("TextButton") or descendant:IsA("TextBox") then
+			local original = descendant:FindFirstChild("OriginalTextSize")
+			if original then
+				descendant.TextScaled = false
+				descendant.TextSize = math.floor(original.Value * scaleFactor)
+			end
+		elseif descendant:IsA("UIStroke") then
+			local original = descendant:FindFirstChild("OriginalThickness")
+			if original then
+				descendant.Thickness = original.Value * scaleFactor
+			end
+		end
+	end
+end
+
+-- Apply once
+storeOriginalValues(screenGui)
+scaleUIElements(screenGui)
+
+-- Optional: reapply if the screen size changes
+game:GetService("RunService").RenderStepped:Connect(function()
+	scaleUIElements(screenGui)
+end)
