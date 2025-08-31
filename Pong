@@ -1,0 +1,229 @@
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local player = Players.LocalPlayer
+
+local screen = Instance.new("ScreenGui")
+screen.Parent = player:WaitForChild("PlayerGui")
+
+local window = Instance.new("Frame")
+window.Size = UDim2.new(0,400,0,300)
+window.Position = UDim2.new(0.3,0,0.3,0)
+window.BackgroundColor3 = Color3.fromRGB(20,20,20)
+window.BorderSizePixel = 0
+window.Parent = screen
+
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1,0,0,30)
+titleBar.BackgroundColor3 = Color3.fromRGB(40,40,40)
+titleBar.Parent = window
+
+local titleText = Instance.new("TextLabel")
+titleText.Size = UDim2.new(1,0,1,0)
+titleText.BackgroundTransparency = 1
+titleText.Text = "Benny's Pong"
+titleText.TextScaled = true
+titleText.TextColor3 = Color3.fromRGB(255,255,255)
+titleText.Parent = titleBar
+
+local dragging, dragStart, startPos = false, nil, nil
+titleBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = window.Position
+	end
+end)
+titleBar.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = false
+	end
+end)
+UIS.InputChanged:Connect(function(input)
+	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local delta = input.Position - dragStart
+		window.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
+end)
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(1,-60,1,-50)
+frame.Position = UDim2.new(0,10,0,40)
+frame.BackgroundColor3 = Color3.fromRGB(0,0,0)
+frame.Parent = window
+
+local controls = Instance.new("Frame")
+controls.Size = UDim2.new(0,40,1,-50)
+controls.Position = UDim2.new(1,-50,0,40)
+controls.BackgroundTransparency = 1
+controls.Parent = window
+
+local upButton = Instance.new("TextButton")
+upButton.Size = UDim2.new(1,0,0.45,0)
+upButton.Text = "▲"
+upButton.TextScaled = true
+upButton.BackgroundColor3 = Color3.fromRGB(60,60,60)
+upButton.TextColor3 = Color3.fromRGB(255,255,255)
+upButton.Parent = controls
+
+local downButton = Instance.new("TextButton")
+downButton.Size = UDim2.new(1,0,0.45,0)
+downButton.Position = UDim2.new(0,0,0.55,0)
+downButton.Text = "▼"
+downButton.TextScaled = true
+downButton.BackgroundColor3 = Color3.fromRGB(60,60,60)
+downButton.TextColor3 = Color3.fromRGB(255,255,255)
+downButton.Parent = controls
+
+local infoLabel = Instance.new("TextLabel")
+infoLabel.Size = UDim2.new(1,0,0,30)
+infoLabel.Position = UDim2.new(0,0,0,frame.AbsoluteSize.Y - 20)
+infoLabel.BackgroundTransparency = 1
+infoLabel.Text = "Use buttons or Z/X to move"
+infoLabel.TextColor3 = Color3.fromRGB(200,200,200)
+infoLabel.TextScaled = true
+infoLabel.Font = Enum.Font.SourceSansItalic
+infoLabel.Parent = frame
+
+local chosenDifficulty
+for i,diff in ipairs({"Easy","Medium","Hard"}) do
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.new(0.3,0,0.15,0)
+	button.Position = UDim2.new(0.35,0,(i-1)*0.2+0.2,0)
+	button.Text = diff
+	button.TextScaled = true
+	button.BackgroundColor3 = Color3.fromRGB(50,50,50)
+	button.TextColor3 = Color3.fromRGB(255,255,255)
+	button.Parent = frame
+	button.MouseButton1Click:Connect(function()
+		chosenDifficulty = diff
+		for _,b in ipairs(frame:GetChildren()) do
+			if b:IsA("TextButton") then b:Destroy() end
+		end
+		if infoLabel then infoLabel:Destroy() end
+	end)
+end
+
+repeat RunService.RenderStepped:Wait() until chosenDifficulty
+
+local playerPaddle = Instance.new("Frame")
+playerPaddle.Size = UDim2.new(0.03,0,0.2,0)
+playerPaddle.Position = UDim2.new(0.05,0,0.4,0)
+playerPaddle.BackgroundColor3 = Color3.fromRGB(255,255,255)
+playerPaddle.Parent = frame
+
+local botPaddle = Instance.new("Frame")
+botPaddle.Size = UDim2.new(0.03,0,0.2,0)
+botPaddle.Position = UDim2.new(0.92,0,0.4,0)
+botPaddle.BackgroundColor3 = Color3.fromRGB(255,255,255)
+botPaddle.Parent = frame
+
+local ball = Instance.new("Frame")
+ball.Size = UDim2.new(0.025,0,0.05,0)
+ball.Position = UDim2.new(0.4875,0,0.475,0)
+ball.BackgroundColor3 = Color3.fromRGB(255,255,255)
+ball.Parent = frame
+
+local scoreLabel = Instance.new("TextLabel")
+scoreLabel.Size = UDim2.new(1,0,0.15,0)
+scoreLabel.BackgroundTransparency = 1
+scoreLabel.Text = "0 - 0"
+scoreLabel.TextScaled = true
+scoreLabel.TextColor3 = Color3.fromRGB(255,255,255)
+scoreLabel.Parent = frame
+
+local botSpeed = (chosenDifficulty == "Easy" and 0.3) or (chosenDifficulty == "Medium" and 0.7) or 1
+local deadzone = (chosenDifficulty == "Hard" and 0.1) or (chosenDifficulty == "Medium" and 0.15) or 0.2
+
+local ballVel = Vector2.new(math.random(0,1) == 0 and -0.01 or 0.01, (math.random()*0.02)-0.01)
+
+local playerScore, botScore = 0,0
+local moveUp, moveDown = false,false
+
+upButton.MouseButton1Down:Connect(function() moveUp = true end)
+upButton.MouseButton1Up:Connect(function() moveUp = false end)
+downButton.MouseButton1Down:Connect(function() moveDown = true end)
+downButton.MouseButton1Up:Connect(function() moveDown = false end)
+
+UIS.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if input.KeyCode == Enum.KeyCode.Z then
+		moveUp = true
+	elseif input.KeyCode == Enum.KeyCode.X then
+		moveDown = true
+	end
+end)
+
+UIS.InputEnded:Connect(function(input, gp)
+	if gp then return end
+	if input.KeyCode == Enum.KeyCode.Z then
+		moveUp = false
+	elseif input.KeyCode == Enum.KeyCode.X then
+		moveDown = false
+	end
+end)
+
+local function checkCollision(paddle)
+	local bx,by,bw,bh = ball.Position.X.Scale, ball.Position.Y.Scale, ball.Size.X.Scale, ball.Size.Y.Scale
+	local px,py,pw,ph = paddle.Position.X.Scale, paddle.Position.Y.Scale, paddle.Size.X.Scale, paddle.Size.Y.Scale
+	return bx < px+pw and bx+bw > px and by < py+ph and by+bh > py
+end
+
+local function bounceFromPaddle(paddle, isPlayer)
+	local paddleCenter = paddle.Position.Y.Scale + paddle.Size.Y.Scale/2
+	local ballCenter = ball.Position.Y.Scale + ball.Size.Y.Scale/2
+	local offset = ballCenter - paddleCenter
+	local normalized = offset / (paddle.Size.Y.Scale/2)
+	local angleStrength = 0.02
+	ballVel = Vector2.new(
+		isPlayer and math.abs(ballVel.X) or -math.abs(ballVel.X),
+		ballVel.Y + normalized * angleStrength
+	)
+	ballVel = ballVel * 1.05
+end
+
+RunService.RenderStepped:Connect(function(dt)
+	local y = playerPaddle.Position.Y.Scale
+	if moveUp then y = y - 0.7*dt end
+	if moveDown then y = y + 0.7*dt end
+	y = math.clamp(y,0,1-playerPaddle.Size.Y.Scale)
+	playerPaddle.Position = UDim2.new(playerPaddle.Position.X.Scale,0,y,0)
+
+	local botY = botPaddle.Position.Y.Scale + botPaddle.Size.Y.Scale/2
+	local targetY = ball.Position.Y.Scale + ball.Size.Y.Scale/2
+	local diff = targetY - botY
+	if math.abs(diff) > deadzone then
+		if diff > 0 then
+			botPaddle.Position = botPaddle.Position + UDim2.new(0,0,botSpeed*dt,0)
+		else
+			botPaddle.Position = botPaddle.Position - UDim2.new(0,0,botSpeed*dt,0)
+		end
+	end
+	botPaddle.Position = UDim2.new(botPaddle.Position.X.Scale,0,math.clamp(botPaddle.Position.Y.Scale,0,1-botPaddle.Size.Y.Scale),0)
+
+	ball.Position = ball.Position + UDim2.new(ballVel.X,0,ballVel.Y,0)
+
+	if ball.Position.Y.Scale <= 0 or ball.Position.Y.Scale >= 1-ball.Size.Y.Scale then
+		ballVel = Vector2.new(ballVel.X,-ballVel.Y)
+	end
+
+	if checkCollision(playerPaddle) then
+		bounceFromPaddle(playerPaddle, true)
+	end
+	if checkCollision(botPaddle) then
+		bounceFromPaddle(botPaddle, false)
+	end
+
+	if ball.Position.X.Scale < 0 then
+		botScore += 1
+		ball.Position = UDim2.new(0.475,0,0.45,0)
+		ballVel = Vector2.new(0.01, (math.random()*0.02)-0.01)
+	elseif ball.Position.X.Scale > 1 then
+		playerScore += 1
+		ball.Position = UDim2.new(0.475,0,0.45,0)
+		ballVel = Vector2.new(-0.01, (math.random()*0.02)-0.01)
+	end
+
+	scoreLabel.Text = playerScore.." - "..botScore
+end)
