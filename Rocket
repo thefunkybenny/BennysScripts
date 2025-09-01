@@ -12,7 +12,7 @@ local camera = workspace.CurrentCamera
 
 -- Settings
 local flying = false
-local SPEED = 40 -- flight speed
+local SPEED = 15 -- flight speed
 local TURN_SPEED = 0.15 -- smooth rotation factor
 local flingDuration = 0.3 -- how long fling burst lasts
 
