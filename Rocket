@@ -1,0 +1,110 @@
+-- LocalScript in StarterPlayerScripts
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+local humanoid = character:WaitForChild("Humanoid")
+local camera = workspace.CurrentCamera
+
+-- Settings
+local flying = false
+local SPEED = 80 -- flight speed
+local TURN_SPEED = 0.15 -- smooth rotation factor
+local flingDuration = 0.3 -- how long fling burst lasts
+
+-- Disable default humanoid states when flying
+local function setFlying(enabled)
+	if enabled then
+		humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+	else
+		humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+	end
+end
+
+-- Get direction towards mouse
+local function getMouseDirection()
+	local mousePos = UserInputService:GetMouseLocation()
+	local unitRay = camera:ViewportPointToRay(mousePos.X, mousePos.Y)
+	return unitRay.Direction.Unit
+end
+
+-- Toggle rocket state
+local function toggleRocket()
+	flying = not flying
+	local animate = character:FindFirstChild("Animate")
+	if animate then
+		animate.Enabled = not flying
+	end
+	humanoid.AutoRotate = not flying
+	setFlying(flying)
+end
+
+-- Fling burst (adapted from punch script)
+local function flingOnce(duration)
+	local originalVel = humanoidRootPart.Velocity
+	local movel = 0.1
+	local active = true
+
+	local hbConn, rsConn, stConn
+
+	hbConn = RunService.Heartbeat:Connect(function()
+		if not active then return end
+		local vel = humanoidRootPart.Velocity
+		humanoidRootPart.Velocity = vel * 1000000 + Vector3.new(0, 1000000, 0)
+	end)
+
+	rsConn = RunService.RenderStepped:Connect(function()
+		if not active then return end
+		humanoidRootPart.Velocity = originalVel
+	end)
+
+	stConn = RunService.Stepped:Connect(function()
+		if not active then return end
+		humanoidRootPart.Velocity = originalVel + Vector3.new(0, movel, 0)
+		movel = movel * -1
+	end)
+
+	task.delay(duration, function()
+		active = false
+		if hbConn then hbConn:Disconnect() end
+		if rsConn then rsConn:Disconnect() end
+		if stConn then stConn:Disconnect() end
+		humanoidRootPart.Velocity = Vector3.zero
+	end)
+end
+
+-- Detect collisions while flying
+humanoidRootPart.Touched:Connect(function(hit)
+	if flying and hit and hit.Parent and hit.Parent ~= character then
+		-- Only fling when colliding with something that’s not yourself
+		flingOnce(flingDuration)
+	end
+end)
+
+-- Keybind
+UserInputService.InputBegan:Connect(function(input, gpe)
+	if gpe then return end
+	if input.KeyCode == Enum.KeyCode.E then
+		toggleRocket()
+	end
+end)
+
+-- Flight loop
+RunService.RenderStepped:Connect(function(dt)
+	if flying and humanoidRootPart then
+		local dir = getMouseDirection()
+
+		-- Apply velocity
+		humanoidRootPart.Velocity = dir * SPEED
+
+		-- Make them point HEAD-FIRST
+		local baseCFrame = CFrame.lookAt(humanoidRootPart.Position, humanoidRootPart.Position + dir)
+		local rotated = baseCFrame * CFrame.Angles(math.rad(-90), 0, 0) -- tilt forward 90°
+
+		humanoidRootPart.CFrame = humanoidRootPart.CFrame:Lerp(rotated, TURN_SPEED)
+	end
+end)
