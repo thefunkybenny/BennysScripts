@@ -332,6 +332,29 @@ local function createWaypoint(pos)
 	return part
 end
 
+local function getNearestValidEnemy(towerPos, range, towerType)
+    local nearest = nil
+    local nearestDist = math.huge
+
+    for _, enemy in ipairs(gameFolder:GetChildren()) do
+        if enemy.Name == "Enemy" then
+
+            -- Skip stealth unless Crossbower
+            if enemy:GetAttribute("Stealth") and towerType ~= "Crossbower" then
+                continue
+            end
+
+            local dist = (enemy.Position - towerPos).Magnitude
+            if dist <= range and dist < nearestDist then
+                nearest = enemy
+                nearestDist = dist
+            end
+        end
+    end
+
+    return nearest
+end
+
 local function createTower(pos, towerType)
 	local config = TowerTypes[towerType]
 	if not config then return end
@@ -356,74 +379,80 @@ local function createTower(pos, towerType)
 	
 	-- Attack loop with LOS and visual beam
 	coroutine.wrap(function()
-		local config = TowerTypes[towerType]
-		local cooldown = config.Cooldown
-		local range = config.Range
-		local damage = config.Damage
+    local config = TowerTypes[towerType]
+    local cooldown = config.Cooldown
+    local range = config.Range
+    local damage = config.Damage
 
-		local target = nil
+    -- Returns the nearest valid enemy in range
+    local function getNearestValidEnemy()
+        local nearest
+        local nearestDist = math.huge
 
-		while tower.Parent do
-			task.wait(cooldown)
+        for _, enemy in ipairs(gameFolder:GetChildren()) do
+            if enemy.Name == "Enemy" then
+                -- Stealth check
+                local stealth = enemy:GetAttribute("Stealth")
+                if stealth and towerType ~= "Crossbower" then
+                    continue
+                end
 
-			-- Find a valid target
-			for _, enemy in ipairs(gameFolder:GetChildren()) do
-				if enemy:IsA("Part") and enemy.Name == "Enemy" then
-					local distance = (enemy.Position - tower.Position).Magnitude
-					if distance <= range then
-						print("in range")
-						local isStealth = enemy:GetAttribute("Stealth")
-						if isStealth and towerType ~= "Crossbower" then
-							continue -- Skip stealth enemies unless this is a Crossbower
-						end
-						
-						target = enemy
-						break
-					end
-				end
-			end
+                local dist = (enemy.Position - tower.Position).Magnitude
+                if dist <= range and dist < nearestDist then
+                    nearest = enemy
+                    nearestDist = dist
+                end
+            end
+        end
 
-			if target and target.Parent then
-				local distance = (target.Position - tower.Position).Magnitude
-				if distance > range then
-					target = nil
-					continue
-				end
-				
-				-- Rotate tower to face target
-				local lookVector = (target.Position - tower.Position).Unit
-				local newCFrame = CFrame.new(tower.Position, tower.Position + Vector3.new(lookVector.X, 0, lookVector.Z))
-				tower.CFrame = newCFrame
+        return nearest
+    end
 
-				-- Damage the target
-				local shrinkAmount = Vector3.new(0.1, 0.1, 0.1) * damage
-				target.Size -= shrinkAmount
-				
-				money += 1
-				updateMoneyDisplay()
-				-- Damage visual (beam-like part)
-				local beamPart = Instance.new("Part")
-				beamPart.Anchored = true
-				beamPart.CanCollide = false
-				beamPart.Material = Enum.Material.Neon
-				beamPart.Color = Color3.new(1, 0, 0)
-				beamPart.Transparency = 0.3
-				beamPart.Size = Vector3.new(0.15, 0.15, (target.Position - tower.Position).Magnitude)
-				beamPart.CFrame = CFrame.new(tower.Position, target.Position) * CFrame.new(0, 0, -beamPart.Size.Z / 2)
-				beamPart.Parent = gameFolder
+    while tower.Parent do
+        task.wait(cooldown)
 
-				game:GetService("Debris"):AddItem(beamPart, 0.2)
+        local target = getNearestValidEnemy()
+        if target and target.Parent then
+            -- Recheck distance (target may have moved)
+            local dist = (target.Position - tower.Position).Magnitude
+            if dist > range then
+                target = nil
+                continue
+            end
 
-				if target.Size.X < 0.5 or target.Size.Y < 0.5 or target.Size.Z < 0.5 then
-					target:Destroy()
-					target = nil
-				end
-			else
-				target = nil
-			end
-		end
-	end)()
-end
+            -- Rotate tower to face target
+            local dir = (target.Position - tower.Position).Unit
+            tower.CFrame = CFrame.new(
+                tower.Position,
+                tower.Position + Vector3.new(dir.X, 0, dir.Z)
+            )
+
+            -- Damage enemy (shrink-based health simulation)
+            target.Size -= Vector3.new(0.1,0.1,0.1) * damage
+
+            -- Add money
+            money += 1
+            updateMoneyDisplay()
+
+            -- Beam visual
+            local beam = Instance.new("Part")
+            beam.Anchored = true
+            beam.CanCollide = false
+            beam.Material = Enum.Material.Neon
+            beam.Color = Color3.new(1, 0, 0)
+            beam.Transparency = 0.3
+            beam.Size = Vector3.new(0.15, 0.15, dist)
+            beam.CFrame = CFrame.new(tower.Position, target.Position) * CFrame.new(0,0,-dist/2)
+            beam.Parent = gameFolder
+            game:GetService("Debris"):AddItem(beam, 0.2)
+
+            -- Enemy death check
+            if math.min(target.Size.X, target.Size.Y, target.Size.Z) <= 0.5 then
+                target:Destroy()
+            end
+        end
+    end
+end)()
 
 local function showRangeCircle(tower, range)
 	hideRangeCircle()
@@ -496,25 +525,22 @@ local function onMouseClick()
 end
 
 local function createEnemy(enemyType)
-	local e = EnemyTypes[enemyType]
-	if not e then return end
+    local e = EnemyTypes[enemyType]
+    if not e then return end
 
-	local enemy = Instance.new("Part")
-	enemy.Anchored, enemy.CanCollide = true, false
-	enemy.Size, enemy.Color = e.Size, e.Color
-	enemy.Position = waypoints[1].Position + Vector3.new(0, 2, 0)
-	enemy.Name = "Enemy"
-	enemy.Parent = gameFolder
-	enemy.Shape = Enum.PartType.Ball
-	enemy.TopSurface = Enum.SurfaceType.Smooth
-	enemy.BottomSurface = Enum.SurfaceType.Smooth
-	
-	local decal = Instance.new("Decal")
-	decal.Texture = "rbxassetid://76360039124008"
-	decal.Face = Enum.NormalId.Front
-	decal.Parent = enemy
-	
-	return enemy, e.Speed
+    local enemy = Instance.new("Part")
+    enemy.Anchored = true
+    enemy.CanCollide = false
+    enemy.Size = e.Size
+    enemy.Color = e.Color
+    enemy.Position = waypoints[1].Position + Vector3.new(0,2,0)
+    enemy.Name = "Enemy"
+    enemy.Parent = gameFolder
+    enemy.Shape = Enum.PartType.Ball
+
+    enemy:SetAttribute("Stealth", e.Stealth == true)
+
+    return enemy, e.Speed
 end
 
 local function moveEnemy(enemy, speed)
