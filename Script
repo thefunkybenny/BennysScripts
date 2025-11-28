@@ -179,15 +179,15 @@ local function createButton(parent, text, pos, callback)
 	btn.TextSize = 20
 	btn.BackgroundTransparency = 1
 	btn.TextColor3 = Color3.new(1, 1, 1)
-	
+
 	local uiCorner = Instance.new("UICorner", btn)
 	uiCorner.CornerRadius = UDim.new(0.1, 0)
-	
+
 	local uiStroke = Instance.new("UIStroke", btn)
 	uiStroke.Thickness = 2
 	uiStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	uiStroke.Color = Color3.new(1,1,1)
-	
+
 	btn.MouseButton1Click:Connect(callback)
 	return btn
 end
@@ -333,26 +333,26 @@ local function createWaypoint(pos)
 end
 
 local function getNearestValidEnemy(towerPos, range, towerType)
-    local nearest = nil
-    local nearestDist = math.huge
+	local nearest = nil
+	local nearestDist = math.huge
 
-    for _, enemy in ipairs(gameFolder:GetChildren()) do
-        if enemy.Name == "Enemy" then
+	for _, enemy in ipairs(gameFolder:GetChildren()) do
+		if enemy.Name == "Enemy" then
 
-            -- Skip stealth unless Crossbower
-            if enemy:GetAttribute("Stealth") and towerType ~= "Crossbower" then
-                continue
-            end
+			-- Skip stealth unless Crossbower
+			if enemy:GetAttribute("Stealth") and towerType ~= "Crossbower" then
+				continue
+			end
 
-            local dist = (enemy.Position - towerPos).Magnitude
-            if dist <= range and dist < nearestDist then
-                nearest = enemy
-                nearestDist = dist
-            end
-        end
-    end
+			local dist = (enemy.Position - towerPos).Magnitude
+			if dist <= range and dist < nearestDist then
+				nearest = enemy
+				nearestDist = dist
+			end
+		end
+	end
 
-    return nearest
+	return nearest
 end
 
 local function createTower(pos, towerType)
@@ -367,7 +367,7 @@ local function createTower(pos, towerType)
 	tower.BrickColor = config.Color
 	tower.Name = towerType .. "Tower"
 	tower.Parent = gameFolder
-	
+
 	tower.Shape = Enum.PartType.Ball
 	tower.TopSurface = Enum.SurfaceType.Smooth
 	tower.BottomSurface = Enum.SurfaceType.Smooth
@@ -376,270 +376,271 @@ local function createTower(pos, towerType)
 	decal.Texture = "rbxassetid://76360039124008"
 	decal.Face = Enum.NormalId.Front
 	decal.Parent = tower
-	
+
 	-- Attack loop with LOS and visual beam
 	coroutine.wrap(function()
-    local config = TowerTypes[towerType]
-    local cooldown = config.Cooldown
-    local range = config.Range
-    local damage = config.Damage
+		local config = TowerTypes[towerType]
+		local cooldown = config.Cooldown
+		local range = config.Range
+		local damage = config.Damage
 
-    -- Returns the nearest valid enemy in range
-    local function getNearestValidEnemy()
-        local nearest
-        local nearestDist = math.huge
+		-- Returns the nearest valid enemy in range
+		local function getNearestValidEnemy()
+			local nearest
+			local nearestDist = math.huge
 
-        for _, enemy in ipairs(gameFolder:GetChildren()) do
-            if enemy.Name == "Enemy" then
-                -- Stealth check
-                local stealth = enemy:GetAttribute("Stealth")
-                if stealth and towerType ~= "Crossbower" then
-                    continue
-                end
+			for _, enemy in ipairs(gameFolder:GetChildren()) do
+				if enemy.Name == "Enemy" then
+					-- Stealth check
+					local stealth = enemy:GetAttribute("Stealth")
+					if stealth and towerType ~= "Crossbower" then
+						continue
+					end
 
-                local dist = (enemy.Position - tower.Position).Magnitude
-                if dist <= range and dist < nearestDist then
-                    nearest = enemy
-                    nearestDist = dist
-                end
-            end
-        end
-
-        return nearest
-    end
-
-    while tower.Parent do
-        task.wait(cooldown)
-
-        local target = getNearestValidEnemy()
-        if target and target.Parent then
-            -- Recheck distance (target may have moved)
-            local dist = (target.Position - tower.Position).Magnitude
-            if dist > range then
-                target = nil
-                continue
-            end
-
-            -- Rotate tower to face target
-            local dir = (target.Position - tower.Position).Unit
-            tower.CFrame = CFrame.new(
-                tower.Position,
-                tower.Position + Vector3.new(dir.X, 0, dir.Z)
-            )
-
-            -- Damage enemy (shrink-based health simulation)
-            target.Size -= Vector3.new(0.1,0.1,0.1) * damage
-
-            -- Add money
-            money += 1
-            updateMoneyDisplay()
-
-            -- Beam visual
-            local beam = Instance.new("Part")
-            beam.Anchored = true
-            beam.CanCollide = false
-            beam.Material = Enum.Material.Neon
-            beam.Color = Color3.new(1, 0, 0)
-            beam.Transparency = 0.3
-            beam.Size = Vector3.new(0.15, 0.15, dist)
-            beam.CFrame = CFrame.new(tower.Position, target.Position) * CFrame.new(0,0,-dist/2)
-            beam.Parent = gameFolder
-            game:GetService("Debris"):AddItem(beam, 0.2)
-
-            -- Enemy death check
-            if math.min(target.Size.X, target.Size.Y, target.Size.Z) <= 0.5 then
-                target:Destroy()
-            end
-        end
-    end
-end)()
-
-local function showRangeCircle(tower, range)
-	hideRangeCircle()
-
-	rangeCircle = Instance.new("Part")
-	rangeCircle.Shape = Enum.PartType.Ball
-	rangeCircle.Size = Vector3.new(range, range, range)
-	rangeCircle.Anchored = true
-	rangeCircle.CanCollide = false
-	rangeCircle.Transparency = 0.6
-	rangeCircle.Material = Enum.Material.ForceField
-	rangeCircle.Color = Color3.fromRGB(255, 255, 255)
-	rangeCircle.Position = tower.Position
-	rangeCircle.Name = "RangeCircle"
-	rangeCircle.Parent = gameFolder
-
-	selectedTower = tower
-end
-
-local function connectWaypoints(p1, p2)
-	local beam = Instance.new("Beam")
-	beam.Attachment0 = p1:FindFirstChild("WaypointAttachment")
-	beam.Attachment1 = p2:FindFirstChild("WaypointAttachment")
-	beam.Color = ColorSequence.new(Color3.fromRGB(255,255,255))
-	beam.Width0, beam.Width1 = 0.25, 0.25
-	beam.FaceCamera, beam.LightInfluence = true, 0
-	beam.Parent = p2
-end
-
-local function onMouseClick()
-	if placingPath and not gameStarted then
-		local ray = workspace:Raycast(workspace.CurrentCamera:ScreenPointToRay(mouse.X, mouse.Y).Origin, mouse.UnitRay.Direction * 500, RaycastParams.new())
-		if ray then
-			local wp = createWaypoint(ray.Position)
-			if #waypoints > 0 then connectWaypoints(waypoints[#waypoints], wp) end
-			table.insert(waypoints, wp)
-		end
-	elseif placingTowerType then
-		local ray = workspace:Raycast(workspace.CurrentCamera:ScreenPointToRay(mouse.X, mouse.Y).Origin, mouse.UnitRay.Direction * 500, RaycastParams.new())
-		local towerData = TowerTypes[placingTowerType]
-		if ray and money >= towerData.Cost then
-			createTower(ray.Position, placingTowerType)
-			money -= towerData.Cost
-			updateMoneyDisplay()
-			print(placingTowerType .. " placed. Money left:", money)
-		elseif money < towerData.Cost then
-			warn("Not enough money to place tower.")
-		end
-	end
-	-- Check if clicking a tower (and not placing one)
-	if not placingPath and not placingTowerType then
-		local ray = workspace:Raycast(workspace.CurrentCamera:ScreenPointToRay(mouse.X, mouse.Y).Origin, mouse.UnitRay.Direction * 500, RaycastParams.new())
-		if ray and ray.Instance then
-			local clicked = ray.Instance
-			if clicked:IsA("Part") and TowerTypes[clicked.Name:gsub("Tower", "")] then
-				if selectedTower == clicked then
-					hideRangeCircle()
-					print("Deselected tower.")
-				else
-					local towerType = clicked.Name:gsub("Tower", "")
-					local config = TowerTypes[towerType]
-					showRangeCircle(clicked, config.Range)
-					print("Selected " .. towerType .. " tower.")
+					local dist = (enemy.Position - tower.Position).Magnitude
+					if dist <= range and dist < nearestDist then
+						nearest = enemy
+						nearestDist = dist
+					end
 				end
-			else
-				hideRangeCircle()
 			end
+
+			return nearest
 		end
-	end
-end
 
-local function createEnemy(enemyType)
-    local e = EnemyTypes[enemyType]
-    if not e then return end
+		while tower.Parent do
+			task.wait(cooldown)
 
-    local enemy = Instance.new("Part")
-    enemy.Anchored = true
-    enemy.CanCollide = false
-    enemy.Size = e.Size
-    enemy.Color = e.Color
-    enemy.Position = waypoints[1].Position + Vector3.new(0,2,0)
-    enemy.Name = "Enemy"
-    enemy.Parent = gameFolder
-    enemy.Shape = Enum.PartType.Ball
+			local target = getNearestValidEnemy()
+			if target and target.Parent then
+				-- Recheck distance (target may have moved)
+				local dist = (target.Position - tower.Position).Magnitude
+				if dist > range then
+					target = nil
+					continue
+				end
 
-    enemy:SetAttribute("Stealth", e.Stealth == true)
+				-- Rotate tower to face target
+				local dir = (target.Position - tower.Position).Unit
+				tower.CFrame = CFrame.new(
+					tower.Position,
+					tower.Position + Vector3.new(dir.X, 0, dir.Z)
+				)
 
-    return enemy, e.Speed
-end
+				-- Damage enemy (shrink-based health simulation)
+				target.Size -= Vector3.new(0.1,0.1,0.1) * damage
 
-local function moveEnemy(enemy, speed)
-	for i = 2, #waypoints do
-		local nextPos = waypoints[i].Position + Vector3.new(0, 2, 0)
-		local distance = (enemy.Position - nextPos).Magnitude
-		local direction = (nextPos - enemy.Position).Unit
-		enemy.CFrame = CFrame.lookAt(enemy.Position, enemy.Position + direction)
-		local tween = TweenService:Create(enemy, TweenInfo.new(distance / speed, Enum.EasingStyle.Linear), { Position = nextPos })
-		tween:Play()
-		tween.Completed:Wait()
-	end
+				-- Add money
+				money += 1
+				updateMoneyDisplay()
 
-	-- Deal damage on leak
-	if enemy and enemy.Parent then
-		local leakDamage = enemy.Size.Magnitude
-		health -= leakDamage
-		updateHealthDisplay()
-		print("Enemy leaked! -" .. leakDamage .. " health. Current health:", health)
+				-- Beam visual
+				local beam = Instance.new("Part")
+				beam.Anchored = true
+				beam.CanCollide = false
+				beam.Material = Enum.Material.Neon
+				beam.Color = Color3.new(1, 0, 0)
+				beam.Transparency = 0.3
+				beam.Size = Vector3.new(0.15, 0.15, dist)
+				beam.CFrame = CFrame.new(tower.Position, target.Position) * CFrame.new(0,0,-dist/2)
+				beam.Parent = gameFolder
+				game:GetService("Debris"):AddItem(beam, 0.2)
 
-		if health <= 0 then
-			print("Game over!")
-			-- Reset game
-			for _, obj in ipairs(gameFolder:GetChildren()) do
-				obj:Destroy()
+				-- Enemy death check
+				if math.min(target.Size.X, target.Size.Y, target.Size.Z) <= 0.5 then
+					target:Destroy()
+				end
 			end
-			clearPath()
-			phase2.Visible = false
-			phase1.Visible = true
-			money, health, currentWave = 20, 100, 0
-			updateMoneyDisplay()
-			updateHealthDisplay()
-			gameStarted = false
-			placingTowerType = nil
-			hideRangeCircle()
-		end
-	end
-
-	enemy:Destroy()
-end
-
-function spawnWave(wave)
-	coroutine.wrap(function()
-		for _, t in ipairs(wave) do
-			local enemy, speed = createEnemy(t)
-			if enemy then coroutine.wrap(function() moveEnemy(enemy, speed) end)() end
-			task.wait(1)
 		end
 	end)()
 end
 
--- Click detection
-mouse.Button1Down:Connect(onMouseClick)
+	local function showRangeCircle(tower, range)
+		hideRangeCircle()
 
-local function storeOriginalValues(instance)
-	for _, descendant in pairs(instance:GetDescendants()) do
-		if descendant:IsA("TextLabel") or descendant:IsA("TextButton") or descendant:IsA("TextBox") then
-			if descendant:FindFirstChild("OriginalTextSize") == nil then
-				local val = Instance.new("NumberValue")
-				val.Name = "OriginalTextSize"
-				val.Value = descendant.TextSize
-				val.Parent = descendant
+		rangeCircle = Instance.new("Part")
+		rangeCircle.Shape = Enum.PartType.Ball
+		rangeCircle.Size = Vector3.new(range, range, range)
+		rangeCircle.Anchored = true
+		rangeCircle.CanCollide = false
+		rangeCircle.Transparency = 0.6
+		rangeCircle.Material = Enum.Material.ForceField
+		rangeCircle.Color = Color3.fromRGB(255, 255, 255)
+		rangeCircle.Position = tower.Position
+		rangeCircle.Name = "RangeCircle"
+		rangeCircle.Parent = gameFolder
+
+		selectedTower = tower
+	end
+
+	local function connectWaypoints(p1, p2)
+		local beam = Instance.new("Beam")
+		beam.Attachment0 = p1:FindFirstChild("WaypointAttachment")
+		beam.Attachment1 = p2:FindFirstChild("WaypointAttachment")
+		beam.Color = ColorSequence.new(Color3.fromRGB(255,255,255))
+		beam.Width0, beam.Width1 = 0.25, 0.25
+		beam.FaceCamera, beam.LightInfluence = true, 0
+		beam.Parent = p2
+	end
+
+	local function onMouseClick()
+		if placingPath and not gameStarted then
+			local ray = workspace:Raycast(workspace.CurrentCamera:ScreenPointToRay(mouse.X, mouse.Y).Origin, mouse.UnitRay.Direction * 500, RaycastParams.new())
+			if ray then
+				local wp = createWaypoint(ray.Position)
+				if #waypoints > 0 then connectWaypoints(waypoints[#waypoints], wp) end
+				table.insert(waypoints, wp)
 			end
-		elseif descendant:IsA("UIStroke") then
-			if descendant:FindFirstChild("OriginalThickness") == nil then
-				local val = Instance.new("NumberValue")
-				val.Name = "OriginalThickness"
-				val.Value = descendant.Thickness
-				val.Parent = descendant
+		elseif placingTowerType then
+			local ray = workspace:Raycast(workspace.CurrentCamera:ScreenPointToRay(mouse.X, mouse.Y).Origin, mouse.UnitRay.Direction * 500, RaycastParams.new())
+			local towerData = TowerTypes[placingTowerType]
+			if ray and money >= towerData.Cost then
+				createTower(ray.Position, placingTowerType)
+				money -= towerData.Cost
+				updateMoneyDisplay()
+				print(placingTowerType .. " placed. Money left:", money)
+			elseif money < towerData.Cost then
+				warn("Not enough money to place tower.")
+			end
+		end
+		-- Check if clicking a tower (and not placing one)
+		if not placingPath and not placingTowerType then
+			local ray = workspace:Raycast(workspace.CurrentCamera:ScreenPointToRay(mouse.X, mouse.Y).Origin, mouse.UnitRay.Direction * 500, RaycastParams.new())
+			if ray and ray.Instance then
+				local clicked = ray.Instance
+				if clicked:IsA("Part") and TowerTypes[clicked.Name:gsub("Tower", "")] then
+					if selectedTower == clicked then
+						hideRangeCircle()
+						print("Deselected tower.")
+					else
+						local towerType = clicked.Name:gsub("Tower", "")
+						local config = TowerTypes[towerType]
+						showRangeCircle(clicked, config.Range)
+						print("Selected " .. towerType .. " tower.")
+					end
+				else
+					hideRangeCircle()
+				end
 			end
 		end
 	end
-end
 
-local function scaleUIElements(instance)
-	local screenSize = game:GetService("Workspace").CurrentCamera.ViewportSize
-	local scaleFactor = screenSize.Y / 800 -- Change 1366 to your baseline screen height
+	local function createEnemy(enemyType)
+		local e = EnemyTypes[enemyType]
+		if not e then return end
 
-	for _, descendant in pairs(instance:GetDescendants()) do
-		if descendant:IsA("TextLabel") or descendant:IsA("TextButton") or descendant:IsA("TextBox") then
-			local original = descendant:FindFirstChild("OriginalTextSize")
-			if original then
-				descendant.TextScaled = false
-				descendant.TextSize = math.floor(original.Value * scaleFactor)
+		local enemy = Instance.new("Part")
+		enemy.Anchored = true
+		enemy.CanCollide = false
+		enemy.Size = e.Size
+		enemy.Color = e.Color
+		enemy.Position = waypoints[1].Position + Vector3.new(0,2,0)
+		enemy.Name = "Enemy"
+		enemy.Parent = gameFolder
+		enemy.Shape = Enum.PartType.Ball
+
+		enemy:SetAttribute("Stealth", e.Stealth == true)
+
+		return enemy, e.Speed
+	end
+
+	local function moveEnemy(enemy, speed)
+		for i = 2, #waypoints do
+			local nextPos = waypoints[i].Position + Vector3.new(0, 2, 0)
+			local distance = (enemy.Position - nextPos).Magnitude
+			local direction = (nextPos - enemy.Position).Unit
+			enemy.CFrame = CFrame.lookAt(enemy.Position, enemy.Position + direction)
+			local tween = TweenService:Create(enemy, TweenInfo.new(distance / speed, Enum.EasingStyle.Linear), { Position = nextPos })
+			tween:Play()
+			tween.Completed:Wait()
+		end
+
+		-- Deal damage on leak
+		if enemy and enemy.Parent then
+			local leakDamage = enemy.Size.Magnitude
+			health -= leakDamage
+			updateHealthDisplay()
+			print("Enemy leaked! -" .. leakDamage .. " health. Current health:", health)
+
+			if health <= 0 then
+				print("Game over!")
+				-- Reset game
+				for _, obj in ipairs(gameFolder:GetChildren()) do
+					obj:Destroy()
+				end
+				clearPath()
+				phase2.Visible = false
+				phase1.Visible = true
+				money, health, currentWave = 20, 100, 0
+				updateMoneyDisplay()
+				updateHealthDisplay()
+				gameStarted = false
+				placingTowerType = nil
+				hideRangeCircle()
 			end
-		elseif descendant:IsA("UIStroke") then
-			local original = descendant:FindFirstChild("OriginalThickness")
-			if original then
-				descendant.Thickness = original.Value * scaleFactor
+		end
+
+		enemy:Destroy()
+	end
+
+	function spawnWave(wave)
+		coroutine.wrap(function()
+			for _, t in ipairs(wave) do
+				local enemy, speed = createEnemy(t)
+				if enemy then coroutine.wrap(function() moveEnemy(enemy, speed) end)() end
+				task.wait(1)
+			end
+		end)()
+	end
+
+	-- Click detection
+	mouse.Button1Down:Connect(onMouseClick)
+
+	local function storeOriginalValues(instance)
+		for _, descendant in pairs(instance:GetDescendants()) do
+			if descendant:IsA("TextLabel") or descendant:IsA("TextButton") or descendant:IsA("TextBox") then
+				if descendant:FindFirstChild("OriginalTextSize") == nil then
+					local val = Instance.new("NumberValue")
+					val.Name = "OriginalTextSize"
+					val.Value = descendant.TextSize
+					val.Parent = descendant
+				end
+			elseif descendant:IsA("UIStroke") then
+				if descendant:FindFirstChild("OriginalThickness") == nil then
+					local val = Instance.new("NumberValue")
+					val.Name = "OriginalThickness"
+					val.Value = descendant.Thickness
+					val.Parent = descendant
+				end
 			end
 		end
 	end
-end
 
--- Apply once
-storeOriginalValues(screenGui)
-scaleUIElements(screenGui)
+	local function scaleUIElements(instance)
+		local screenSize = game:GetService("Workspace").CurrentCamera.ViewportSize
+		local scaleFactor = screenSize.Y / 800 -- Change 1366 to your baseline screen height
 
--- Optional: reapply if the screen size changes
-game:GetService("RunService").RenderStepped:Connect(function()
+		for _, descendant in pairs(instance:GetDescendants()) do
+			if descendant:IsA("TextLabel") or descendant:IsA("TextButton") or descendant:IsA("TextBox") then
+				local original = descendant:FindFirstChild("OriginalTextSize")
+				if original then
+					descendant.TextScaled = false
+					descendant.TextSize = math.floor(original.Value * scaleFactor)
+				end
+			elseif descendant:IsA("UIStroke") then
+				local original = descendant:FindFirstChild("OriginalThickness")
+				if original then
+					descendant.Thickness = original.Value * scaleFactor
+				end
+			end
+		end
+	end
+
+	-- Apply once
+	storeOriginalValues(screenGui)
 	scaleUIElements(screenGui)
-end)
+
+	-- Optional: reapply if the screen size changes
+	game:GetService("RunService").RenderStepped:Connect(function()
+		scaleUIElements(screenGui)
+	end)
